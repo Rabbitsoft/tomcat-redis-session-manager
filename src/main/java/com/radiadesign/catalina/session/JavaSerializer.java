@@ -16,8 +16,8 @@ public class JavaSerializer implements Serializer {
 
   @Override
   public byte[] serializeFrom(HttpSession session) throws IOException {
-
     RedisSession redisSession = (RedisSession) session;
+    
     ByteArrayOutputStream bos = new ByteArrayOutputStream();
     ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(bos));
     oos.writeLong(redisSession.getCreationTime());
@@ -30,7 +30,6 @@ public class JavaSerializer implements Serializer {
 
   @Override
   public HttpSession deserializeInto(byte[] data, HttpSession session) throws IOException, ClassNotFoundException {
-
     RedisSession redisSession = (RedisSession) session;
 
     BufferedInputStream bis = new BufferedInputStream(new ByteArrayInputStream(data));

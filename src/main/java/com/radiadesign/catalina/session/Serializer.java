@@ -7,6 +7,7 @@ public interface Serializer {
   void setClassLoader(ClassLoader loader);
 
   byte[] serializeFrom(HttpSession session) throws IOException;
-
-  HttpSession deserializeInto(byte[] data, HttpSession session) throws IOException, ClassNotFoundException;
+  
+  HttpSession deserializeInto(byte[] data, HttpSession session) 
+	  throws IOException, ClassNotFoundException;
 }
