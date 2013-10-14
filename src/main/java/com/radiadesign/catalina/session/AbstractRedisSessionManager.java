@@ -22,6 +22,11 @@ public abstract class AbstractRedisSessionManager extends ManagerBase {
 	protected int maxIdle;
 	protected int minIdle;
 	
+	/** 
+	 * Properties that should be ignored when comparing for dirty reference.
+	 */
+	protected String ignoredProperties;
+	
 	protected String serializationStrategyClass = "com.radiadesign.catalina.session.JavaSerializer";
 	
 	public void setSerializationStrategyClass(String strategy) {
@@ -133,5 +138,13 @@ public abstract class AbstractRedisSessionManager extends ManagerBase {
 	
 	public void setTimeout(int timeout) {
 		this.timeout = timeout;
+	}
+
+	public String getIgnoredProperties() {
+		return ignoredProperties;
+	}
+
+	public void setIgnoredProperties(String ignoredProperties) {
+		this.ignoredProperties = ignoredProperties;
 	}
 }

@@ -1,9 +1,11 @@
 package com.radiadesign.catalina.session;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -62,7 +64,13 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 	 * The lifecycle event support for this component.
 	 */
 	protected LifecycleSupport lifecycle = new LifecycleSupport(this);
-
+	
+	/** 
+	 * Contains an array with properties that should be ignored in 
+	 * {@link #isDirtyByReference(RedisSession)}.
+	 */
+	private List<String> ignorePropertyList = new ArrayList<String>();
+	
 	public int getRejectedSessions() {
 		// Essentially do nothing.
 		return 0;
@@ -153,6 +161,13 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 
 		initializeDatabaseConnection();
 		setDistributable(true);
+		
+		String ignoreProps = getIgnoredProperties();
+		if (ignoreProps != null) {
+			for (String prop : ignoreProps.split(",")) {
+				ignorePropertyList.add(prop.trim());
+			}
+		}
 
 		lifecycle.fireLifecycleEvent(START_EVENT, null);
 	}
@@ -411,6 +426,9 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 			Enumeration<?> copyNames = initialSession.getAttributeNames();
 			while (copyNames.hasMoreElements()) {
 				String name = (String) copyNames.nextElement();
+				if (ignorePropertyList.contains(name)) {
+					continue;
+				}
 				
 				Object newValue = redisSession.getAttribute(name);
 				Object oldValue = initialSession.getAttribute(name);
