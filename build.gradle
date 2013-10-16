@@ -1,4 +1,8 @@
 apply plugin: 'java'
+apply plugin: 'maven'
+
+
+group = 'org.apache.tomcat'
 version = '1.2'
 
 repositories {

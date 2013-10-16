@@ -1,6 +1,7 @@
 package com.radiadesign.catalina.session;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -353,11 +354,14 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 
 			Boolean sessionIsDirty = redisSession.isDirty();
 			redisSession.resetDirtyTracking();
-			byte[] binaryId = redisSession.getId().getBytes();
+			
+			byte[] binaryId = redisSession.getId().getBytes(), binaryAuthId = (redisSession.getId() + ":principal" + "").getBytes();
 
 			jedis = acquireConnection();
 			if (sessionIsDirty || currentSessionIsPersisted.get() != true || isDirtyByReference(redisSession)) {
 				jedis.set(binaryId, serializer.serializeFrom(redisSession));
+				jedis.set(binaryAuthId, 
+					extractPrincipalName(redisSession).getBytes());
 			}
 
 			currentSessionIsPersisted.set(true);
@@ -365,6 +369,8 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 				+ redisSession.getId() + "] to " + getMaxInactiveInterval());
 			
 			jedis.expire(binaryId, getMaxInactiveInterval());
+			jedis.expire(binaryAuthId, getMaxInactiveInterval());
+			
 			error = false;
 		} catch (IOException e) {
 			log.severe(e.getMessage());
@@ -412,6 +418,34 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 		// expiration.
 
 		// Do nothing.
+	}
+	
+	/** 
+	 * Customised implementation to extract spring security principal name to make 
+	 * authentication via session possible. 
+	 * 
+	 * @param redisSession session
+	 * @return empty string or username
+	 */
+	private String extractPrincipalName(RedisSession redisSession) {
+		try {
+			Object context = redisSession.getAttribute("SPRING_SECURITY_CONTEXT");
+			if (context != null) {
+				Method authenticationMethod = context.getClass().getMethod("getAuthentication");
+				if (authenticationMethod != null) {
+					Object authentication = authenticationMethod.invoke(context);
+					
+					Method nameMethod = authentication.getClass().getMethod("getName");
+					if (nameMethod != null) {
+						return (String) nameMethod.invoke(authentication);
+					}
+				}
+				
+			}
+		} catch (Exception ex) {
+			log.warning("Failed to extract principal name:" + ex.getMessage());
+		}
+		return "";
 	}
 	
 	private boolean isDirtyByReference(RedisSession redisSession) { 
