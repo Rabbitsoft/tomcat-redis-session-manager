@@ -1,9 +1,7 @@
 package com.radiadesign.catalina.session;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
-import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -16,12 +14,10 @@ import javax.servlet.http.HttpSession;
 
 import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleException;
-import org.apache.catalina.LifecycleListener;
 import org.apache.catalina.LifecycleState;
 import org.apache.catalina.Loader;
 import org.apache.catalina.Session;
 import org.apache.catalina.Valve;
-import org.apache.catalina.util.LifecycleSupport;
 
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
