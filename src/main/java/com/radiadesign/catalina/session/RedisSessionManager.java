@@ -1,7 +1,9 @@
 package com.radiadesign.catalina.session;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -15,6 +17,7 @@ import javax.servlet.http.HttpSession;
 import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.LifecycleListener;
+import org.apache.catalina.LifecycleState;
 import org.apache.catalina.Loader;
 import org.apache.catalina.Session;
 import org.apache.catalina.Valve;
@@ -61,23 +64,19 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 	 */
 	protected ThreadLocal<Boolean> currentSessionIsPersisted = new ThreadLocal<Boolean>();
 	
-	/**
-	 * The lifecycle event support for this component.
-	 */
-	protected LifecycleSupport lifecycle = new LifecycleSupport(this);
-	
 	/** 
 	 * Contains an array with properties that should be ignored in 
 	 * {@link #isDirtyByReference(RedisSession)}.
 	 */
 	private List<String> ignorePropertyList = new ArrayList<String>();
 	
+	@Override
 	public int getRejectedSessions() {
 		// Essentially do nothing.
 		return 0;
 	}
 
-	public void setRejectedSessions(int i) {
+	public void setRejectedSessions(long i) {
 		// Do nothing.
 	}
 
@@ -108,34 +107,10 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 	public void unload() throws IOException {
 	}
 
-	/**
-	 * Add a lifecycle event listener to this component.
-	 * 
-	 * @param listener The listener to add
-	 */
-	public void addLifecycleListener(LifecycleListener listener) {
-		lifecycle.addLifecycleListener(listener);
-	}
-
-	/**
-	 * Get the lifecycle listeners associated with this lifecycle. If this
-	 * Lifecycle has no listeners registered, a zero-length array is returned.
-	 */
-	public LifecycleListener[] findLifecycleListeners() {
-		return lifecycle.findLifecycleListeners();
-	}
-
-	/**
-	 * Remove a lifecycle event listener from this component.
-	 * 
-	 * @param listener The listener to remove
-	 */
-	public void removeLifecycleListener(LifecycleListener listener) {
-		lifecycle.removeLifecycleListener(listener);
-	}
-
 	@Override
-	public void start() throws LifecycleException {
+	public void startInternal() throws LifecycleException {
+		super.startInternal();
+		
 		for (Valve valve : getContainer().getPipeline().getValves()) {
 			if (valve instanceof RedisSessionHandlerValve) {
 				this.handlerValve = (RedisSessionHandlerValve) valve;
@@ -169,22 +144,25 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 				ignorePropertyList.add(prop.trim());
 			}
 		}
-
-		lifecycle.fireLifecycleEvent(START_EVENT, null);
+		setState(LifecycleState.STARTING);
 	}
 
 	@Override
-	public void stop() throws LifecycleException {
+	public void stopInternal() throws LifecycleException {
+		super.stopInternal();
+		
 		try {
 			connectionPool.destroy();
 		} catch (Exception e) {
 			// Do nothing.
 		}
-		lifecycle.fireLifecycleEvent(STOP_EVENT, null);
+		setState(LifecycleState.STOPPING);
 	}
 
 	@Override
-	public Session createSession() {
+	public Session createSession(String sessionId) {
+		log.info("Creating new session");
+		
 		RedisSession session = (RedisSession) createEmptySession();
 
 		// Initialize the properties of the new session and return it
@@ -192,8 +170,7 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 		session.setValid(true);
 		session.setCreationTime(System.currentTimeMillis());
 		session.setMaxInactiveInterval(getMaxInactiveInterval());
-
-		String sessionId;
+		
 		String jvmRoute = getJvmRoute();
 
 		Boolean error = true;
@@ -201,22 +178,13 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 
 		try {
 			jedis = acquireConnection();
-
-			// Ensure generation of a unique session identifier.
-			do {
+			while (sessionId == null || jedis.get(sessionId.getBytes()) != null) {
 				sessionId = generateSessionId();
 				if (jvmRoute != null) {
 					sessionId += '.' + jvmRoute;
 				}
-			} while (jedis.setnx(sessionId.getBytes(), NULL_SESSION) == 1L); 
-
-			/*
-			 * Even though the key is set in Redis, we are not going to flag the
-			 * current thread as having had the session persisted since the
-			 * session isn't actually serialized to Redis yet. This ensures that
-			 * the save(session) at the end of the request will serialize the
-			 * session into Redis with 'set' instead of 'setnx'.
-			 */
+			}
+			jedis.set(sessionId.getBytes(), NULL_SESSION); 
 			error = false;
 
 			session.setId(sessionId);
@@ -313,7 +281,11 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 				session.access();
 				session.setValid(true);
 				session.resetDirtyTracking();
-
+				
+				jedis.expire(id.getBytes(), getMaxInactiveInterval());
+				jedis.expire((id + ":principal").getBytes(), 
+					getMaxInactiveInterval());
+				
 				if (log.isLoggable(Level.FINE)) {
 					log.fine("Session Contents [" + id + "]:");
 					for (Object name : Collections.list(
@@ -351,11 +323,10 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 					log.fine("  " + name);
 				}
 			}
-
 			Boolean sessionIsDirty = redisSession.isDirty();
 			redisSession.resetDirtyTracking();
 			
-			byte[] binaryId = redisSession.getId().getBytes(), binaryAuthId = (redisSession.getId() + ":principal" + "").getBytes();
+			byte[] binaryId = redisSession.getId().getBytes(), binaryAuthId = (redisSession.getId() + ":principal").getBytes();
 
 			jedis = acquireConnection();
 			if (sessionIsDirty || currentSessionIsPersisted.get() != true || isDirtyByReference(redisSession)) {
@@ -383,7 +354,13 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 		}
 	}
 
+	@Override
 	public void remove(Session session) {
+		remove(session, false);
+	}
+	
+	@Override
+	public void remove(Session session, boolean update) {
 		Jedis jedis = null;
 		Boolean error = true;
 
