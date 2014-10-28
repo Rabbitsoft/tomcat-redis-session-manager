@@ -19,6 +19,7 @@ public class RedisSessionHandlerValve extends ValveBase {
 	public void invoke(Request request, Response response) 
 		throws IOException, ServletException {
 		
+		manager.beforeRequest(request.getParameter("_js"));
 		try {
 			getNext().invoke(request, response);
 		} finally {

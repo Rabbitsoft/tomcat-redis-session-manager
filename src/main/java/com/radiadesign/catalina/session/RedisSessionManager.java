@@ -52,6 +52,11 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 	protected LifecycleSupport lifecycle = new LifecycleSupport(this);
 	
 	/** 
+	 * SessionID to migrated to another session id.
+	 */
+	private String migrateSessionId; 
+	
+	/** 
 	 * Contains an array with properties that should be ignored in 
 	 * {@link Serializer#attributesHashFrom(RedisSession, List)}
 	 */
@@ -220,13 +225,29 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 	    	error = false;
 	    	
 	    	if (null != sessionId) {
-	    		session = (RedisSession)createEmptySession();
-	    		session.setNew(true);
-	    		session.setValid(true);
-	    		session.setCreationTime(System.currentTimeMillis());
-	    		session.setMaxInactiveInterval(getMaxInactiveInterval());
-	    		session.setId(sessionId);
-	    		session.tellNew();
+		    	if (migrateSessionId != null) {
+		    		try {
+						session = (RedisSession) findSession(migrateSessionId);
+						if (session != null) {
+							jedis.del(session.getId());
+							jedis.del(session.getId() + ":principal");
+							
+							session.setId(sessionId);
+						}
+					} catch (IOException e) {
+						log.error("Failed to migrate session: " + e.getMessage());
+					}
+		    	} 
+		    	
+		    	if (session == null) {	    		
+		    		session = (RedisSession)createEmptySession();
+		    		session.setNew(true);
+		    		session.setValid(true);
+		    		session.setCreationTime(System.currentTimeMillis());
+		    		session.setMaxInactiveInterval(getMaxInactiveInterval());
+		    		session.setId(sessionId);
+		    		session.tellNew();
+		    	}
 	    	}
 	    	
 	    	currentSessionSerializationMetadata.set(new SessionSerializationMetadata());
@@ -290,11 +311,6 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 				currentSessionIsPersisted.set(true);
 				currentSessionId.set(id);
 				
-//				
-//				jedis.expire(id.getBytes(), getMaxInactiveInterval());
-//				jedis.expire((id + ":principal").getBytes(), 
-//					getMaxInactiveInterval());
-				
 			} else {
 				currentSessionIsPersisted.set(false);
 				currentSession.set(null);
@@ -325,8 +341,8 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 
 	    try {
 	    	log.trace("Attempting to load session " + id + " from Redis");
-	    	
 	    	jedis = acquireConnection();
+	    	
 	    	byte[] data = jedis.get(id.getBytes());
 	    	error = false;
 	    	if (data == null) {
@@ -500,6 +516,10 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 				returnConnection(jedis, error);
 			}
 		}
+	}
+	
+	public void beforeRequest(String sessionId) {
+		migrateSessionId = sessionId;
 	}
 	
 	public void afterRequest() {
