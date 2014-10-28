@@ -524,6 +524,8 @@ public class RedisSessionManager extends AbstractRedisSessionManager implements 
 	
 	public void afterRequest() {
 		RedisSession redisSession = currentSession.get();
+		migrateSessionId = null;
+		
 		if (redisSession != null) {
 			try {
 				if (redisSession.isValid()) {
