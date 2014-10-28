@@ -40,8 +40,9 @@ public abstract class AbstractRedisSessionManager extends ManagerBase {
 		config.setTestOnReturn(testOnReturn);
 		config.setTestWhileIdle(testWhileIdle);
 		
-		config.setMaxActive(maxActive);
-		config.setMaxWait(maxWait);
+		
+		config.setMaxTotal(maxActive);
+		config.setMaxWaitMillis(maxWait);
 		config.setMaxIdle(maxIdle);
 		config.setMinIdle(minIdle);
 		

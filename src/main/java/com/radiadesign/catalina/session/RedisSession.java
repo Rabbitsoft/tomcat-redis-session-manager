@@ -1,5 +1,6 @@
 package com.radiadesign.catalina.session;
 
+import java.io.IOException;
 import java.security.Principal;
 import java.util.HashMap;
 
@@ -12,10 +13,6 @@ public class RedisSession extends StandardSession {
 	protected HashMap<String, Object> changedAttributes;
 	protected Boolean dirty;
 
-	public RedisSession() {
-		super(null);
-	}
-	
 	public RedisSession(Manager manager) {
 		super(manager);
 		resetDirtyTracking();
@@ -30,37 +27,54 @@ public class RedisSession extends StandardSession {
 	}
 
 	public void resetDirtyTracking() {
-		changedAttributes = new HashMap<String, Object>();
+		changedAttributes = new HashMap<>();
 		dirty = false;
 	}
 
 	@Override
 	public void setAttribute(String key, Object value) {
-		Object oldValue = getAttribute(key); 
-		if (value == null && oldValue != null 
-				|| oldValue == null && value != null 
-				|| !value.getClass().isInstance(oldValue) 
-				|| !value.equals(oldValue) ) {
-			changedAttributes.put(key, value); 
-		}
+
+		Object oldValue = getAttribute(key);
 		super.setAttribute(key, value);
+
+		if ((value != null || oldValue != null) && 
+				(value == null && oldValue != null 
+					|| oldValue == null && value != null 
+					|| !value.getClass().isInstance(oldValue) || !value.equals(oldValue))) {
+				changedAttributes.put(key, value);
+		}
 	}
 
+	@Override
 	public void removeAttribute(String name) {
-		dirty = true;
 		super.removeAttribute(name);
+		dirty = true;
 	}
 
 	@Override
 	public void setId(String id) {
-		// Specifically do not call super(): it's implementation does unexpected things
+		// Specifically do not call super(): it's implementation does unexpected
+		// things
 		// like calling manager.remove(session.id) and manager.add(session).
+
 		this.id = id;
 	}
 
+	@Override
 	public void setPrincipal(Principal principal) {
 		dirty = true;
 		super.setPrincipal(principal);
 	}
 
+	@Override
+	public void writeObjectData(java.io.ObjectOutputStream out) throws IOException {
+		super.writeObjectData(out);
+		out.writeLong(this.getCreationTime());
+	}
+
+	@Override
+	public void readObjectData(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
+		super.readObjectData(in);
+		this.setCreationTime(in.readLong());
+	}
 }
